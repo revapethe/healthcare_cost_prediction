@@ -83,14 +83,18 @@ def main():
     
     # Sidebar
 
-    with st.sidebar:
-        st.markdown("### 🏥 Healthcare Analytics Platform")
+     with st.sidebar:
+        # Display logo
+        st.image("assets/logo.png", use_container_width=True)
+        
+        st.markdown("# 🏥 Healthcare Analytics")
+        st.markdown("### Cost Prediction Platform")
         st.markdown("---")
         
         page = st.radio(
             "Navigation",
-            ["Executive Dashboard", "Patient Predictor", "Risk Stratification", 
-             "Cost Analysis", "Model Performance"]
+            ["Executive Dashboard", "Patient Predictor", 
+             "Risk Stratification", "Cost Analysis", "Model Performance"]
         )
         
         st.markdown("---")
