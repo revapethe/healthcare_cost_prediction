@@ -53,11 +53,24 @@ st.markdown("""
 @st.cache_data
 def load_data():
     """Load processed data"""
+    import os
     try:
-        df = pd.read_csv('data/processed/processed_data.csv')
-        return df
-    except FileNotFoundError:
+        # Try multiple paths
+        paths = [
+            'data/processed/processed_data.csv',
+            '../data/processed/processed_data.csv',
+            '/mount/src/healthcare_cost_prediction/data/processed/processed_data.csv'
+        ]
+        
+        for path in paths:
+            if os.path.exists(path):
+                df = pd.read_csv(path)
+                return df
+        
         st.error("Data not found. Please run the data generation script first.")
+        return None
+    except Exception as e:
+        st.error(f"Error loading data: {e}")
         return None
 
 
