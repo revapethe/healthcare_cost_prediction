@@ -82,9 +82,7 @@ def main():
     st.markdown("### Comprehensive analytics for healthcare cost management")
     
     # Sidebar
-
-     with st.sidebar:
-        # Display logo
+    with st.sidebar:
         st.image("assets/logo.png", use_container_width=True)
         
         st.markdown("# 🏥 Healthcare Analytics")
