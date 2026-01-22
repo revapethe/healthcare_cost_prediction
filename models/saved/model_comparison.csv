@@ -1,0 +1,5 @@
+,RMSE,MAE,R²,MAPE,Training Time (s)
+Linear Regression,0.0,0.0,1.0,0.0,0.01
+Ridge Regression,0.8,0.56,1.0,0.01,0.0
+Gradient Boosting,101.58,54.19,0.9996,0.7,6.49
+Random Forest,121.8,22.93,0.9994,0.26,2.51

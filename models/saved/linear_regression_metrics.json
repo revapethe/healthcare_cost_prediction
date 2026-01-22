@@ -1,0 +1,11 @@
+{
+    "model_name": "Linear Regression",
+    "metrics": {
+        "RMSE": 0.0,
+        "MAE": 0.0,
+        "R2": 1.0,
+        "MAPE": 0.0
+    },
+    "training_time": 0.01,
+    "trained_date": "2026-01-21T21:59:41.507160"
+}
