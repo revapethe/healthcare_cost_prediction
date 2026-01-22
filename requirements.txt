@@ -1,8 +1,8 @@
+streamlit>=1.28.0
 pandas
 numpy
 scikit-learn
-streamlit
 plotly
 matplotlib
 seaborn
-statsmodels
+altair<5
