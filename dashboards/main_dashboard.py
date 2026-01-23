@@ -83,7 +83,7 @@ def main():
     
     # Sidebar
     with st.sidebar:
-        st.image("assets/logo.png", width=180)
+        st.image("assets/logo.png", width=150)
         
         st.markdown("# 🏥 Healthcare Analytics")
         st.markdown("### Cost Prediction Platform")
