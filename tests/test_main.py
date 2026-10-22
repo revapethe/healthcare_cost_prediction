@@ -1,230 +1,311 @@
-"""
-Test Suite for Healthcare Cost Prediction System
-"""
+"""Regression tests for leakage, training boundaries and shared real inference."""
 
-import pytest
-import pandas as pd
+import json
+
+from fastapi.testclient import TestClient
+import joblib
 import numpy as np
-from pathlib import Path
-import sys
+import pandas as pd
+import pytest
+from pydantic import ValidationError
 
-# Add src to path
-sys.path.append(str(Path(__file__).parent.parent))
-
-from src.data.pipeline import DataPreprocessor
-from src.models.predict import CostPredictor
-
-
-class TestDataPreprocessor:
-    """Test data preprocessing functionality"""
-    
-    @pytest.fixture
-    def preprocessor(self):
-        return DataPreprocessor()
-    
-    @pytest.fixture
-    def sample_data(self):
-        return pd.DataFrame({
-            'age': [25, 45, 65, 80],
-            'bmi': [22.5, 28.0, 32.5, 27.0],
-            'smoker': [0, 1, 0, 0],
-            'total_annual_cost': [3000, 8000, 25000, 35000],
-            'gender': ['M', 'F', 'M', 'F'],
-            'insurance_type': ['Private', 'Medicare', 'Medicaid', 'Medicare']
-        })
-    
-    def test_handle_missing_values(self, preprocessor, sample_data):
-        """Test missing value handling"""
-        # Add missing values
-        sample_data.loc[0, 'age'] = np.nan
-        sample_data.loc[1, 'bmi'] = np.nan
-        
-        # Process
-        result = preprocessor.handle_missing_values(sample_data)
-        
-        # Assertions
-        assert result.isnull().sum().sum() == 0, "Missing values not handled"
-        assert len(result) == len(sample_data), "Data length changed"
-    
-    def test_encode_categorical(self, preprocessor, sample_data):
-        """Test categorical encoding"""
-        categorical_cols = ['gender', 'insurance_type']
-        result = preprocessor.encode_categorical(sample_data, categorical_cols)
-        
-        # Assertions
-        for col in categorical_cols:
-            assert pd.api.types.is_numeric_dtype(result[col]), f"{col} not encoded"
-    
-    def test_remove_outliers(self, preprocessor, sample_data):
-        """Test outlier removal"""
-        original_len = len(sample_data)
-        result = preprocessor.remove_outliers(sample_data, ['total_annual_cost'], 
-                                             method='iqr', threshold=1.5)
-        
-        # Assertions
-        assert len(result) <= original_len, "Outlier removal failed"
-        assert len(result) > 0, "All data removed"
-    
-    def test_create_derived_features(self, preprocessor, sample_data):
-        """Test derived feature creation"""
-        result = preprocessor.create_derived_features(sample_data)
-        
-        # Check new features exist
-        assert 'age_group' in result.columns, "Age group not created"
-        assert 'bmi_category' in result.columns, "BMI category not created"
+from src.api.app import create_app
+from src.data.pipeline import (
+    ROOT,
+    FEATURES,
+    EXCLUDED_FEATURES,
+    NUMERIC_FEATURES,
+    TARGET,
+    load_dataset,
+    make_preprocessor,
+    run_pipeline,
+    split_dataset,
+)
+from src.models.predict import (
+    ArtifactError,
+    CostPredictor,
+    PatientInput,
+    categorize_risk,
+)
+from src.models.train import ensemble_weights, regression_metrics, train
 
 
-class TestPredictionModel:
-    """Test prediction functionality"""
-    
-    def test_risk_categorization(self):
-        """Test risk category assignment"""
-        from src.models.predict import CostPredictor
-        
-        # Mock predictor
-        assert CostPredictor.categorize_risk(None, 3000) == 'Low'
-        assert CostPredictor.categorize_risk(None, 15000) == 'Medium'
-        assert CostPredictor.categorize_risk(None, 50000) == 'High'
-        assert CostPredictor.categorize_risk(None, 150000) == 'Catastrophic'
-    
-    def test_confidence_interval(self):
-        """Test confidence interval calculation"""
-        from src.models.predict import CostPredictor
-        
-        predictor = CostPredictor.__new__(CostPredictor)
-        ci = predictor.calculate_confidence_interval(10000)
-        
-        assert 'lower' in ci, "Lower bound missing"
-        assert 'upper' in ci, "Upper bound missing"
-        assert ci['lower'] < 10000 < ci['upper'], "CI doesn't contain prediction"
-    
-    def test_cost_breakdown(self):
-        """Test cost breakdown estimation"""
-        from src.models.predict import CostPredictor
-        
-        predictor = CostPredictor.__new__(CostPredictor)
-        breakdown = predictor.estimate_cost_breakdown(10000)
-        
-        assert 'inpatient' in breakdown, "Inpatient cost missing"
-        assert 'pharmacy' in breakdown, "Pharmacy cost missing"
-        assert sum(breakdown.values()) == pytest.approx(10000, rel=0.01), \
-               "Breakdown doesn't sum to total"
+@pytest.fixture(scope="session")
+def dataset():
+    return load_dataset()
 
 
-class TestDataValidation:
-    """Test data validation rules"""
-    
-    def test_age_range(self):
-        """Test age is within valid range"""
-        ages = [18, 45, 65, 100]
-        assert all(18 <= age <= 100 for age in ages), "Invalid age found"
-    
-    def test_bmi_range(self):
-        """Test BMI is within valid range"""
-        bmis = [15.0, 22.5, 35.0, 60.0]
-        assert all(15 <= bmi <= 60 for bmi in bmis), "Invalid BMI found"
-    
-    def test_cost_positive(self):
-        """Test costs are non-negative"""
-        costs = [0, 1000, 50000, 200000]
-        assert all(cost >= 0 for cost in costs), "Negative cost found"
+@pytest.fixture(scope="session")
+def trained_path():
+    path = ROOT / "artifacts/model.joblib"
+    if not path.exists():
+        train()
+    return path
 
 
-class TestAPIEndpoints:
-    """Test API endpoints"""
-    
-    @pytest.fixture
-    def client(self):
-        from fastapi.testclient import TestClient
-        from src.api.app import app
-        return TestClient(app)
-    
-    def test_health_endpoint(self, client):
-        """Test health check endpoint"""
-        response = client.get("/health")
-        assert response.status_code == 200
-        assert "status" in response.json()
-    
-    def test_predict_endpoint(self, client):
-        """Test prediction endpoint"""
-        patient_data = {
-            "age": 45,
-            "gender": "M",
-            "bmi": 28.5,
-            "smoker": False,
-            "chronic_conditions_count": 2,
-            "previous_office_visits": 5,
-            "previous_er_visits": 1,
-            "previous_hospitalizations": 0,
-            "medication_count": 3
-        }
-        
-        response = client.post("/api/v1/predict", json=patient_data)
-        
-        assert response.status_code in [200, 503], "Unexpected status code"
-        if response.status_code == 200:
-            result = response.json()
-            assert "predicted_cost" in result
-            assert "risk_category" in result
+@pytest.fixture
+def predictor(trained_path):
+    return CostPredictor(trained_path)
 
 
-class TestModelMetrics:
-    """Test model performance metrics"""
-    
-    def test_rmse_calculation(self):
-        """Test RMSE calculation"""
-        from sklearn.metrics import mean_squared_error
-        
-        y_true = np.array([10000, 15000, 20000, 25000])
-        y_pred = np.array([9500, 16000, 19000, 26000])
-        
-        rmse = np.sqrt(mean_squared_error(y_true, y_pred))
-        assert rmse > 0, "RMSE should be positive"
-        assert rmse < 5000, "RMSE too high"
-    
-    def test_mae_calculation(self):
-        """Test MAE calculation"""
-        from sklearn.metrics import mean_absolute_error
-        
-        y_true = np.array([10000, 15000, 20000, 25000])
-        y_pred = np.array([9500, 16000, 19000, 26000])
-        
-        mae = mean_absolute_error(y_true, y_pred)
-        assert mae > 0, "MAE should be positive"
-        assert mae < rmse, "MAE should be less than RMSE"
+@pytest.fixture
+def patient():
+    return PatientInput(
+        age=55,
+        gender="M",
+        bmi=28.0,
+        chronic_conditions_count=2,
+        previous_office_visits=5,
+        previous_er_visits=1,
+        previous_hospitalizations=1,
+        medication_count=3,
+    )
 
 
-# Performance benchmarks
-@pytest.mark.benchmark
-class TestPerformance:
-    """Test system performance"""
-    
-    def test_prediction_speed(self, benchmark):
-        """Test prediction latency"""
-        from src.models.predict import CostPredictor
-        
-        # Mock prediction function
-        def predict():
-            return np.random.uniform(5000, 50000)
-        
-        result = benchmark(predict)
-        assert result > 0, "Prediction failed"
-    
-    def test_batch_processing_speed(self):
-        """Test batch processing speed"""
-        import time
-        
-        n_samples = 1000
-        start_time = time.time()
-        
-        # Simulate batch processing
-        predictions = [np.random.uniform(5000, 50000) for _ in range(n_samples)]
-        
-        elapsed_time = time.time() - start_time
-        throughput = n_samples / elapsed_time
-        
-        assert throughput > 100, f"Throughput too low: {throughput:.2f} pred/sec"
+def test_raw_and_engineered_features_are_all_audited(dataset):
+    assert not (set(FEATURES) & set(EXCLUDED_FEATURES))
+    assert set(dataset) == set(FEATURES) | (set(EXCLUDED_FEATURES) & set(dataset))
+    assert set(PatientInput.model_fields) == set(FEATURES)
+    assert len(FEATURES) == 16
 
 
-if __name__ == "__main__":
-    pytest.main([__file__, "-v", "--cov=src", "--cov-report=html"])
+def test_split_is_complete_disjoint_and_reproducible(dataset, tmp_path):
+    splits = run_pipeline(output_dir=tmp_path)
+    ids = [set(frame.patient_id) for frame in splits.values()]
+    assert not ids[0] & ids[1] and not ids[1] & ids[2] and not ids[0] & ids[2]
+    assert set.union(*ids) == set(dataset.patient_id)
+    for name, frame in split_dataset(dataset).items():
+        assert frame.patient_id.tolist() == splits[name].patient_id.tolist()
+        saved = pd.read_csv(tmp_path / f"{name}.csv")
+        assert set(saved) == {"patient_id", TARGET, *FEATURES}
+
+
+def test_duplicate_patient_cannot_cross_splits(dataset, tmp_path):
+    invalid = pd.concat([dataset, dataset.iloc[:1]])
+    path = tmp_path / "duplicate.csv"
+    invalid.to_csv(path, index=False)
+    with pytest.raises(ValueError, match="unique"):
+        load_dataset(path)
+
+
+def test_preprocessing_never_reads_targets_or_unapproved_columns(dataset):
+    preprocessor = make_preprocessor().fit(dataset.iloc[:100])
+    original = preprocessor.transform(dataset.iloc[100:105])
+    poisoned = dataset.iloc[100:105].copy()
+    for name in EXCLUDED_FEATURES:
+        poisoned[name] = 1e12
+    poisoned["future_bill"] = -1e99
+    np.testing.assert_allclose(original, preprocessor.transform(poisoned))
+
+
+def test_imputation_and_scaling_fit_training_only(dataset, predictor):
+    training = split_dataset(dataset)["train"]
+    model = predictor.model
+    # VotingRegressor contains independently fitted full pipelines.
+    pipelines = model.estimators_ if hasattr(model, "estimators_") else [model]
+    for pipeline in pipelines:
+        numeric = pipeline.named_steps["preprocessor"].named_transformers_["numeric"]
+        medians = training[NUMERIC_FEATURES].median().to_numpy()
+        np.testing.assert_allclose(numeric.named_steps["imputer"].statistics_, medians)
+        imputed = training[NUMERIC_FEATURES].fillna(training[NUMERIC_FEATURES].median())
+        np.testing.assert_allclose(
+            numeric.named_steps["scale"].mean_, imputed.mean().to_numpy()
+        )
+
+
+def test_literal_none_vaccination_is_not_missing(dataset):
+    assert (dataset.vaccination_status == "None").any()
+    assert not dataset.vaccination_status.isna().any()
+
+
+def test_inconsistent_pressure_is_missing_before_training(dataset):
+    assert not (
+        dataset.blood_pressure_diastolic >= dataset.blood_pressure_systolic
+    ).any()
+    assert (
+        dataset.blood_pressure_systolic.isna().sum()
+        == dataset.blood_pressure_diastolic.isna().sum()
+    )
+
+
+@pytest.mark.parametrize(
+    "errors", [[0, 0, 0], [0, 1, 2], [1e-300, 1e300, 5], [1, 2, 3]]
+)
+def test_ensemble_weights_are_finite_even_for_zero_rmse(errors):
+    weights = ensemble_weights(errors)
+    assert np.isfinite(weights).all()
+    assert (weights >= 0).all()
+    assert weights.sum() == pytest.approx(1)
+    if 0 in errors:
+        assert all(weight == 0 for error, weight in zip(errors, weights) if error > 0)
+
+
+@pytest.mark.parametrize("errors", [[], [np.nan], [np.inf], [-1], [[1, 2]]])
+def test_invalid_ensemble_errors_rejected(errors):
+    with pytest.raises(ValueError):
+        ensemble_weights(errors)
+
+
+def test_metric_math():
+    result = regression_metrics(np.array([1, 3]), np.array([2, 3]))
+    assert result["MAE"] == 0.5
+    assert result["RMSE"] == pytest.approx(np.sqrt(0.5))
+    assert result["R2"] == 0.5
+
+
+@pytest.mark.parametrize(
+    "cost,expected",
+    [(4999.99, "Low"), (5000, "Medium"), (25000, "High"), (100000, "Catastrophic")],
+)
+def test_cost_bands(cost, expected):
+    assert categorize_risk(cost) == expected
+
+
+def test_shared_inference_deterministic_and_pipeline_exact(predictor, patient):
+    first = predictor.predict(patient)
+    assert first == predictor.predict(patient.model_dump())
+    expected = max(
+        0, predictor.model.predict(pd.DataFrame([patient.model_dump()])[FEATURES])[0]
+    )
+    assert first["predicted_cost"] == round(expected, 2)
+    assert first["monthly_cost"] == round(first["predicted_cost"] / 12, 2)
+    assert "confidence_interval" not in first
+
+
+def test_population_matches_single_inference(predictor, patient):
+    frame = pd.DataFrame([patient.model_dump(), patient.model_dump()])
+    costs = predictor.predict_population(frame)
+    np.testing.assert_array_equal(
+        costs, [predictor.predict(patient)["predicted_cost"]] * 2
+    )
+
+
+@pytest.mark.parametrize(
+    "override",
+    [
+        {"age": 17},
+        {"age": True},
+        {"bmi": float("nan")},
+        {"bmi": float("inf")},
+        {"previous_er_visits": -1},
+        {"gender": "unknown"},
+        {"state": "unknown"},
+        {"total_annual_cost": 100},
+        {"previous_year_cost": 5000},
+        {"blood_pressure_systolic": 90, "blood_pressure_diastolic": 100},
+    ],
+)
+def test_invalid_prediction_inputs_rejected(patient, override):
+    with pytest.raises(ValidationError):
+        PatientInput.model_validate({**patient.model_dump(), **override})
+
+
+def test_missing_corrupt_and_legacy_artifacts_fail_honestly(tmp_path):
+    for path in [
+        tmp_path / "missing.joblib",
+        tmp_path / "bad.joblib",
+        tmp_path / "legacy.joblib",
+    ]:
+        if path.name == "bad.joblib":
+            path.write_bytes(b"corrupt")
+        elif path.name == "legacy.joblib":
+            joblib.dump({"schema_version": 0}, path)
+        with pytest.raises(ArtifactError, match="unavailable"):
+            CostPredictor(path)
+        with TestClient(create_app(path)) as client:
+            assert client.get("/health").status_code == 503
+            assert (
+                client.post(
+                    "/api/v1/predict", json={"age": 55, "gender": "M", "bmi": 28}
+                ).status_code
+                == 503
+            )
+
+
+def test_api_single_batch_and_dashboard_service_match(trained_path, predictor, patient):
+    with TestClient(create_app(trained_path)) as client:
+        assert client.get("/health").json()["model_loaded"]
+        result = client.post("/api/v1/predict", json=patient.model_dump())
+        assert result.status_code == 200
+        assert result.json() == predictor.predict(patient)
+        batch = client.post(
+            "/api/v1/predict/batch", json={"patients": [patient.model_dump()] * 2}
+        )
+        assert batch.status_code == 200
+        assert batch.json()["predictions"] == [result.json()] * 2
+        assert (
+            client.post("/api/v1/predict/batch", json={"patients": []}).status_code
+            == 422
+        )
+        assert client.post("/api/v1/predict", json={"age": -1}).status_code == 422
+        assert (
+            client.get("/api/v1/stats").json()["selected_model"]
+            == predictor.metadata["selected_model"]
+        )
+        assert client.get("/api/v1/risk-categories").status_code == 200
+
+
+def test_report_selection_and_test_metrics_are_reproducible(dataset, predictor):
+    report = predictor.metadata
+    assert report["selected_model"] == min(
+        report["validation"], key=lambda name: report["validation"][name]["RMSE"]
+    )
+    test = split_dataset(dataset)["test"]
+    measured = regression_metrics(
+        test[TARGET], np.maximum(0, predictor.model.predict(test[FEATURES]))
+    )
+    for metric, value in measured.items():
+        assert report["test"][report["selected_model"]][metric] == pytest.approx(value)
+    assert report["test"]["Mean baseline"]["RMSE"] > 0
+    assert report["test"][report["selected_model"]]["R2"] < 0.99
+    assert len(json.dumps(report, allow_nan=False)) > 0
+
+
+def test_test_targets_cannot_change_model_selection_or_fit(
+    dataset, tmp_path, monkeypatch
+):
+    """Poison held-out outcomes and prove selection/preprocessing remain identical."""
+    import importlib
+
+    module = importlib.import_module("src.models.train")
+    splits = split_dataset(dataset.iloc[:300])
+    monkeypatch.setattr(module, "run_pipeline", lambda *args: splits)
+    first_path = tmp_path / "first"
+    first = train(
+        output_dir=first_path,
+        report_path=tmp_path / "first.json",
+        include_boosters=False,
+    )
+    first_model = CostPredictor(first_path / "model.joblib")
+    splits["test"] = splits["test"].copy()
+    splits["test"][TARGET] += 100000
+    second_path = tmp_path / "second"
+    second = train(
+        output_dir=second_path,
+        report_path=tmp_path / "second.json",
+        include_boosters=False,
+    )
+    second_model = CostPredictor(second_path / "model.joblib")
+    assert first["selected_model"] == second["selected_model"]
+    # Parallel reductions can differ by a few floating-point bits across fits.
+    # Keep model/member selection exact and numerical comparisons tight enough
+    # to detect any material influence from the poisoned held-out outcomes.
+    assert first["validation"].keys() == second["validation"].keys()
+    for name, metrics in first["validation"].items():
+        assert metrics == pytest.approx(
+            second["validation"][name], rel=1e-10, abs=1e-10
+        )
+    assert first["ensemble"]["members"] == second["ensemble"]["members"]
+    np.testing.assert_allclose(
+        first["ensemble"]["weights"],
+        second["ensemble"]["weights"],
+        rtol=1e-10,
+        atol=1e-12,
+    )
+    np.testing.assert_allclose(
+        first_model.model.predict(splits["test"][FEATURES]),
+        second_model.model.predict(splits["test"][FEATURES]),
+        rtol=1e-10,
+        atol=1e-7,
+    )
+    assert first["test"] != second["test"]

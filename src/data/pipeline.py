@@ -1,270 +1,142 @@
-"""
-Data Preprocessing Pipeline
-Handles data cleaning, validation, and transformation
-"""
+"""Explicit prediction-time feature contract and untouched held-out splits."""
+
+import argparse
+import hashlib
+from pathlib import Path
 
 import pandas as pd
-import numpy as np
-from pathlib import Path
-from sklearn.preprocessing import StandardScaler, LabelEncoder
+from sklearn.compose import ColumnTransformer
+from sklearn.impute import SimpleImputer
 from sklearn.model_selection import train_test_split
-import joblib
-import logging
+from sklearn.pipeline import Pipeline
+from sklearn.preprocessing import OneHotEncoder, StandardScaler
 
-logging.basicConfig(level=logging.INFO)
-logger = logging.getLogger(__name__)
-
-
-class DataPreprocessor:
-    """Handle all data preprocessing tasks"""
-    
-    def __init__(self, config=None):
-        self.config = config or {}
-        self.scalers = {}
-        self.encoders = {}
-        
-    def load_data(self, filepath):
-        """Load data from CSV file"""
-        logger.info(f"Loading data from {filepath}")
-        df = pd.read_csv(filepath)
-        logger.info(f"Loaded {len(df)} records with {len(df.columns)} columns")
-        return df
-    
-    def handle_missing_values(self, df):
-        """Handle missing values in the dataset"""
-        logger.info("Handling missing values...")
-        
-        # Numeric columns - fill with median
-        numeric_cols = df.select_dtypes(include=[np.number]).columns
-        for col in numeric_cols:
-            if df[col].isnull().any():
-                df[col].fillna(df[col].median(), inplace=True)
-        
-        # Categorical columns - fill with mode
-        categorical_cols = df.select_dtypes(include=['object']).columns
-        for col in categorical_cols:
-            if df[col].isnull().any():
-                df[col].fillna(df[col].mode()[0], inplace=True)
-        
-        logger.info(f"Missing values handled. Remaining nulls: {df.isnull().sum().sum()}")
-        return df
-    
-    def remove_outliers(self, df, columns, method='iqr', threshold=3):
-        """Remove outliers using IQR or Z-score method"""
-        logger.info(f"Removing outliers using {method} method...")
-        
-        original_len = len(df)
-        
-        if method == 'iqr':
-            for col in columns:
-                Q1 = df[col].quantile(0.25)
-                Q3 = df[col].quantile(0.75)
-                IQR = Q3 - Q1
-                lower_bound = Q1 - threshold * IQR
-                upper_bound = Q3 + threshold * IQR
-                df = df[(df[col] >= lower_bound) & (df[col] <= upper_bound)]
-        
-        elif method == 'zscore':
-            for col in columns:
-                z_scores = np.abs((df[col] - df[col].mean()) / df[col].std())
-                df = df[z_scores < threshold]
-        
-        removed = original_len - len(df)
-        logger.info(f"Removed {removed} outliers ({removed/original_len*100:.2f}%)")
-        
-        return df
-    
-    def encode_categorical(self, df, categorical_columns):
-        """Encode categorical variables"""
-        logger.info("Encoding categorical variables...")
-        
-        df_encoded = df.copy()
-        
-        for col in categorical_columns:
-            if col in df_encoded.columns:
-                if col not in self.encoders:
-                    self.encoders[col] = LabelEncoder()
-                    df_encoded[col] = self.encoders[col].fit_transform(df_encoded[col].astype(str))
-                else:
-                    df_encoded[col] = self.encoders[col].transform(df_encoded[col].astype(str))
-        
-        logger.info(f"Encoded {len(categorical_columns)} categorical columns")
-        return df_encoded
-    
-    def create_derived_features(self, df):
-        """Create derived features for better predictions"""
-        logger.info("Creating derived features...")
-        
-        df_features = df.copy()
-        
-        # Age groups
-        df_features['age_group'] = pd.cut(df['age'], 
-                                          bins=[0, 30, 50, 65, 100],
-                                          labels=['Young', 'Middle', 'Senior', 'Elderly'])
-        
-        # BMI categories
-        df_features['bmi_category'] = pd.cut(df['bmi'],
-                                            bins=[0, 18.5, 25, 30, 100],
-                                            labels=['Underweight', 'Normal', 'Overweight', 'Obese'])
-        
-        # Cost per visit
-        total_visits = (df_features['previous_office_visits'] + 
-                       df_features['previous_er_visits'] + 
-                       df_features['previous_hospitalizations'])
-        df_features['cost_per_visit'] = np.where(
-            total_visits > 0,
-            df_features['previous_year_cost'] / total_visits,
-            0
-        )
-        
-        # High utilizer flag
-        df_features['high_utilizer'] = (
-            (df_features['previous_office_visits'] > df_features['previous_office_visits'].quantile(0.75)) |
-            (df_features['previous_er_visits'] > 2) |
-            (df_features['previous_hospitalizations'] > 1)
-        ).astype(int)
-        
-        # Comorbidity score (simplified)
-        df_features['comorbidity_score'] = (
-            df_features['chronic_conditions_count'] * 2 +
-            df_features['medication_count'] * 0.5 +
-            df_features['smoker'] * 3
-        )
-        
-        # Insurance adequacy score
-        insurance_coverage_map = {
-            'Medicare': 0.80,
-            'Medicaid': 0.85,
-            'Private': 0.75,
-            'Self-Pay': 0.0,
-            'HMO': 0.78,
-            'PPO': 0.72
-        }
-        df_features['insurance_coverage_score'] = df_features['insurance_type'].map(insurance_coverage_map)
-        
-        # Financial risk score
-        df_features['financial_risk_score'] = (
-            (df_features['patient_responsibility'] / df_features['total_annual_cost']).fillna(0) * 100
-        )
-        
-        # Healthcare intensity
-        df_features['healthcare_intensity'] = (
-            df_features['previous_office_visits'] * 1 +
-            df_features['previous_er_visits'] * 5 +
-            df_features['previous_hospitalizations'] * 10
-        )
-        
-        logger.info(f"Created {len(df_features.columns) - len(df.columns)} new features")
-        
-        return df_features
-    
-    def scale_features(self, df, numeric_columns, fit=True):
-        """Scale numeric features"""
-        logger.info("Scaling numeric features...")
-        
-        df_scaled = df.copy()
-        
-        if fit:
-            self.scalers['standard'] = StandardScaler()
-            df_scaled[numeric_columns] = self.scalers['standard'].fit_transform(df[numeric_columns])
-        else:
-            df_scaled[numeric_columns] = self.scalers['standard'].transform(df[numeric_columns])
-        
-        return df_scaled
-    
-    def prepare_model_data(self, df, target_column, test_size=0.2, random_state=42):
-        """Prepare data for model training"""
-        logger.info("Preparing data for modeling...")
-        
-        # Separate features and target
-        X = df.drop(columns=[target_column, 'patient_id', 'data_date'], errors='ignore')
-        y = df[target_column]
-        
-        # Split data
-        X_train, X_test, y_train, y_test = train_test_split(
-            X, y, test_size=test_size, random_state=random_state, stratify=None
-        )
-        
-        logger.info(f"Training set: {len(X_train)} samples")
-        logger.info(f"Test set: {len(X_test)} samples")
-        
-        return X_train, X_test, y_train, y_test
-    
-    def save_preprocessor(self, filepath):
-        """Save preprocessor objects"""
-        logger.info(f"Saving preprocessor to {filepath}")
-        joblib.dump({
-            'scalers': self.scalers,
-            'encoders': self.encoders
-        }, filepath)
-    
-    def load_preprocessor(self, filepath):
-        """Load preprocessor objects"""
-        logger.info(f"Loading preprocessor from {filepath}")
-        objects = joblib.load(filepath)
-        self.scalers = objects['scalers']
-        self.encoders = objects['encoders']
+ROOT = Path(__file__).resolve().parents[2]
+TARGET = "total_annual_cost"
+NUMERIC_FEATURES = [
+    "age",
+    "bmi",
+    "smoker",
+    "chronic_conditions_count",
+    "previous_hospitalizations",
+    "previous_er_visits",
+    "previous_office_visits",
+    "medication_count",
+    "blood_pressure_systolic",
+    "blood_pressure_diastolic",
+    "cholesterol_total",
+    "glucose_fasting",
+]
+CATEGORICAL_FEATURES = ["gender", "state", "insurance_type", "vaccination_status"]
+FEATURES = NUMERIC_FEATURES + CATEGORICAL_FEATURES
+# Deny by default: adding a new column never silently changes the model contract.
+EXCLUDED_FEATURES = {
+    "patient_id": "Identifier; retained only for split integrity checks.",
+    "data_date": "Dataset creation date, not a prospective observation date.",
+    "zip_code": "Synthetic identifier with no justified predictive use.",
+    "chronic_conditions": "Redundant unvalidated diagnostic text; use count only.",
+    "total_annual_cost": "Target.",
+    "inpatient_cost": "Same-year component of target.",
+    "outpatient_cost": "Same-year component of target.",
+    "pharmacy_cost": "Same-year component of target.",
+    "emergency_cost": "Same-year component of target.",
+    "insurance_paid": "Target times coverage rate.",
+    "patient_responsibility": "Target minus insurance payment.",
+    "payment_status": "Observed after billing; unavailable at prediction time.",
+    "outstanding_balance": "Target-derived balance observed after billing.",
+    "risk_category": "Thresholded target.",
+    "previous_year_cost": "Generator shares current-year random base; chronology unverified.",
+    "financial_risk_score": "Ratio derived from target and patient responsibility.",
+    "cost_per_visit": "Uses excluded previous_year_cost.",
+    "age_group": "Redundant; age is available directly.",
+    "bmi_category": "Redundant; BMI is available directly.",
+    "high_utilizer": "Old full-dataset quantile; replaced by raw prior counts.",
+    "comorbidity_score": "Unvalidated heuristic; use its raw inputs.",
+    "insurance_coverage_score": "Unvalidated heuristic; use insurance category.",
+    "healthcare_intensity": "Unvalidated heuristic; use raw prior counts.",
+}
 
 
-def run_pipeline():
-    """Run the complete preprocessing pipeline"""
-    
-    # Initialize preprocessor
-    preprocessor = DataPreprocessor()
-    
-    # Load data
-    df = preprocessor.load_data('data/raw/patient_data.csv')
-    
-    # Handle missing values
-    df = preprocessor.handle_missing_values(df)
-    
-    # Create derived features
-    df = preprocessor.create_derived_features(df)
-    
-    # Encode categorical variables
-    categorical_cols = ['gender', 'state', 'insurance_type', 'vaccination_status', 
-                       'payment_status', 'age_group', 'bmi_category']
-    df = preprocessor.encode_categorical(df, categorical_cols)
-    
-    # Remove outliers from cost columns
-    cost_columns = ['total_annual_cost', 'previous_year_cost']
-    df = preprocessor.remove_outliers(df, cost_columns, method='iqr', threshold=3)
-    
-    # Save processed data
-    output_dir = Path('data/processed')
-    output_dir.mkdir(parents=True, exist_ok=True)
-    
-    df.to_csv(output_dir / 'processed_data.csv', index=False)
-    logger.info(f"Saved processed data to {output_dir / 'processed_data.csv'}")
-    
-    # Prepare data for modeling
-    numeric_features = df.select_dtypes(include=[np.number]).columns.tolist()
-    numeric_features = [col for col in numeric_features if col not in ['patient_id', 'total_annual_cost']]
-    
-    # Split for cost prediction
-    X_train, X_test, y_train, y_test = preprocessor.prepare_model_data(
-        df, 'total_annual_cost', test_size=0.2
+def make_preprocessor():
+    """Return an unfitted transformer; fit only inside a training Pipeline."""
+    numeric = Pipeline(
+        [
+            ("imputer", SimpleImputer(strategy="median")),
+            ("scale", StandardScaler()),
+        ]
     )
-    
-    # Scale features
-    X_train_scaled = preprocessor.scale_features(X_train[numeric_features], numeric_features, fit=True)
-    X_test_scaled = preprocessor.scale_features(X_test[numeric_features], numeric_features, fit=False)
-    
-    # Save train/test splits
-    X_train_scaled.to_csv(output_dir / 'X_train.csv', index=False)
-    X_test_scaled.to_csv(output_dir / 'X_test.csv', index=False)
-    y_train.to_csv(output_dir / 'y_train.csv', index=False, header=['total_annual_cost'])
-    y_test.to_csv(output_dir / 'y_test.csv', index=False, header=['total_annual_cost'])
-    
-    # Save preprocessor
-    preprocessor.save_preprocessor(output_dir / 'preprocessor.pkl')
-    
-    logger.info("✅ Pipeline complete!")
-    logger.info(f"Final dataset shape: {df.shape}")
-    logger.info(f"Features: {len(X_train.columns)}")
-    
-    return df, X_train_scaled, X_test_scaled, y_train, y_test
+    categorical = Pipeline(
+        [
+            ("imputer", SimpleImputer(strategy="most_frequent")),
+            ("encode", OneHotEncoder(handle_unknown="ignore", sparse_output=False)),
+        ]
+    )
+    return ColumnTransformer(
+        [
+            ("numeric", numeric, NUMERIC_FEATURES),
+            ("categorical", categorical, CATEGORICAL_FEATURES),
+        ],
+        remainder="drop",
+    )
 
 
-if __name__ == '__main__':
-    run_pipeline()
+def load_dataset(path=ROOT / "data/raw/patient_data.csv"):
+    data = pd.read_csv(path, keep_default_na=False, na_values=[""])
+    required = ["patient_id", TARGET, *FEATURES]
+    missing = set(required) - set(data.columns)
+    if missing:
+        raise ValueError(f"Missing dataset columns: {sorted(missing)}")
+    if (
+        len(data) < 50
+        or data.patient_id.isna().any()
+        or data.patient_id.duplicated().any()
+    ):
+        raise ValueError("Need at least 50 unique patient records with nonempty IDs")
+    numeric = data[[*NUMERIC_FEATURES, TARGET]].apply(pd.to_numeric, errors="raise")
+    if numeric.isin([float("inf"), float("-inf")]).any().any():
+        raise ValueError("Infinite numeric values are unsupported")
+    if data[TARGET].isna().any() or (data[TARGET] < 0).any():
+        raise ValueError("Target must be observed and nonnegative")
+    # Row-local quality rule; no population statistics or target-dependent filtering.
+    invalid_pressure = data.blood_pressure_diastolic >= data.blood_pressure_systolic
+    data.loc[
+        invalid_pressure, ["blood_pressure_systolic", "blood_pressure_diastolic"]
+    ] = float("nan")
+    return data
+
+
+def split_dataset(data, seed=42):
+    """60/20/20 patient split before any fitted preprocessing or selection."""
+    train, test = train_test_split(data, test_size=0.2, random_state=seed)
+    train, validation = train_test_split(train, test_size=0.25, random_state=seed)
+    return {"train": train, "validation": validation, "test": test}
+
+
+def dataset_digest(path):
+    return hashlib.sha256(Path(path).read_bytes()).hexdigest()
+
+
+def run_pipeline(
+    data_path=ROOT / "data/raw/patient_data.csv", output_dir=ROOT / "artifacts/splits"
+):
+    splits = split_dataset(load_dataset(data_path))
+    output_dir = Path(output_dir)
+    output_dir.mkdir(parents=True, exist_ok=True)
+    for name, frame in splits.items():
+        frame[["patient_id", *FEATURES, TARGET]].to_csv(
+            output_dir / f"{name}.csv", index=False
+        )
+    return splits
+
+
+def main():
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--data", type=Path, default=ROOT / "data/raw/patient_data.csv")
+    parser.add_argument("--output", type=Path, default=ROOT / "artifacts/splits")
+    args = parser.parse_args()
+    splits = run_pipeline(args.data, args.output)
+    print({name: len(frame) for name, frame in splits.items()})
+
+
+if __name__ == "__main__":
+    main()
