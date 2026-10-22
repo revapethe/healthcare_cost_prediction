@@ -79,9 +79,14 @@ class ArtifactError(RuntimeError):
 
 class CostPredictor:
     def __init__(self, model_path=None):
-        path = Path(
-            model_path or os.environ.get("MODEL_PATH", ROOT / "artifacts/model.joblib")
-        )
+        configured_path = model_path or os.environ.get("MODEL_PATH")
+        if configured_path:
+            path = Path(configured_path)
+        else:
+            local_path = ROOT / "artifacts/model.joblib"
+            path = (
+                local_path if local_path.exists() else ROOT / "deployment/model.joblib"
+            )
         try:
             bundle = joblib.load(path)
             if bundle["schema_version"] != 1 or bundle["features"] != FEATURES:

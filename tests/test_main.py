@@ -309,3 +309,42 @@ def test_test_targets_cannot_change_model_selection_or_fit(
         atol=1e-7,
     )
     assert first["test"] != second["test"]
+
+
+def test_cloud_bundle_loads_without_local_training_outputs(
+    tmp_path, monkeypatch, patient
+):
+    import importlib
+    import shutil
+
+    module = importlib.import_module("src.models.predict")
+    bundled = ROOT / "deployment/model.joblib"
+    (tmp_path / "deployment").mkdir()
+    shutil.copyfile(bundled, tmp_path / "deployment/model.joblib")
+    monkeypatch.setattr(module, "ROOT", tmp_path)
+    monkeypatch.delenv("MODEL_PATH", raising=False)
+    predictor = CostPredictor()
+    assert (
+        predictor.predict(patient)["predicted_cost"]
+        == CostPredictor(bundled).predict(patient)["predicted_cost"]
+    )
+    with TestClient(create_app()) as client:
+        assert client.get("/health").status_code == 200
+        assert (
+            client.post("/api/v1/predict", json=patient.model_dump()).status_code == 200
+        )
+    (tmp_path / "artifacts").mkdir()
+    (tmp_path / "artifacts/model.joblib").write_bytes(b"corrupt local artifact")
+    with pytest.raises(ArtifactError):
+        CostPredictor()
+
+
+def test_cloud_bundle_manifest_matches_dataset_and_evaluation():
+    import hashlib
+
+    path = ROOT / "deployment/model.joblib"
+    manifest = json.loads((ROOT / "deployment/manifest.json").read_text())
+    report = json.loads((ROOT / "reports/evaluation.json").read_text())
+    assert hashlib.sha256(path.read_bytes()).hexdigest() == manifest["sha256"]
+    assert CostPredictor(path).metadata == report
+    assert manifest["dataset_sha256"] == report["dataset_sha256"]
