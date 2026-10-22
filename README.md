@@ -1,138 +1,236 @@
-Healthcare Cost Prediction & Risk Analytics
-From patient profiles to transparent cost estimates
-An interactive machine learning application that explores healthcare spending, estimates annual patient costs, and compares financial risk across a synthetic population.
+<div align="center">
 
-The project brings together an auditable modeling workflow, a Streamlit analytics dashboard, and a FastAPI prediction service. Every prediction uses the same fitted preprocessing pipeline, keeping results consistent across interfaces.
-Educational application using synthetic data. This project is not a validated clinical decision tool, and its estimates should not guide patient care or financial decisions.
+# Healthcare Cost Prediction & Risk Analytics
 
-Project Overview
-Healthcare costs vary with patient characteristics, chronic conditions, and prior service utilization. This application examines those relationships through three connected capabilities:
-- Explore observed costs across patient groups.
-- Estimate annual spending from information assumed available before the forecast year.
-- Compare alternative profiles to understand how model estimates respond to different inputs.
-The emphasis is on transparent evaluation and consistent inference. Observed spending, predicted spending, and scenario comparisons are clearly distinguished throughout the application.
-Application Experience
-Workspace	Purpose
-Executive Overview	Explore population size, total spending, average costs, and cost distributions.
-Patient Cost Predictor	Generate a deterministic annual cost estimate from a patient profile.
-Risk Stratification	Group patients into illustrative financial cost bands using model predictions.
-Cost Analysis	Examine observed spending patterns and the composition of synthetic healthcare bills.
-Model Performance	Compare measured model results and inspect evaluation provenance.
-What-If Scenarios	Compare estimates for an original profile and an alternative profile.
+### From patient profiles to transparent cost estimates
 
+Explore healthcare spending, estimate annual patient costs, and compare financial risk through an interactive machine learning application.
 
-Population views include age, state, and insurance filters. Interactive Plotly charts support exploration, while CSV exports make results available for further analysis.
-Dataset
-The committed dataset contains 10,000 synthetic patients and 31 raw columns, covering:
+**Python · pandas · NumPy · scikit-learn · Streamlit · Plotly · FastAPI · Docker**
+
+</div>
+
+---
+
+> **Educational application using synthetic data.** This project is not a validated clinical decision tool. Its estimates should not guide patient care or financial decisions.
+
+## Overview
+
+Healthcare spending varies with patient characteristics, chronic conditions, and prior service utilization. This project explores those relationships through an integrated analytics dashboard and prediction API.
+
+The application connects three capabilities:
+
+- **Understand spending:** Explore observed costs across a synthetic patient population.
+- **Estimate future costs:** Generate annual cost estimates from information assumed available before the forecast year.
+- **Explore scenarios:** Compare model estimates for different patient profiles.
+
+A shared prediction service keeps preprocessing and inference consistent across the dashboard, API, and scenario comparisons.
+
+## Application Features
+
+| Workspace | What it provides |
+|---|---|
+| **Executive Overview** | Population summaries, observed spending, average costs, and cost distributions |
+| **Patient Cost Predictor** | Deterministic annual cost estimates from a patient profile |
+| **Risk Stratification** | Population grouping using predicted financial cost bands |
+| **Cost Analysis** | Exploration of observed costs and synthetic billing components |
+| **Model Performance** | Measured model comparisons, evaluation details, and provenance |
+| **What-If Scenarios** | Side-by-side estimates for original and alternative patient profiles |
+
+Population views include interactive filters for age, state, and insurance type. Plotly charts support exploration, and CSV exports make results available for further analysis.
+
+## Dataset
+
+The committed dataset contains **10,000 synthetic patients** and **31 raw columns**.
+
+It includes:
+
 - Demographic characteristics
 - Chronic condition counts
 - Prior hospitalizations and emergency and office visits
 - Medication counts and selected measurements
 - Insurance categories
 - Observed annual costs and billing components
-The data is generated from predefined relationships and random variation. It does not represent real patients or establish how the application would perform in a clinical population.
-Modeling Approach
-Preventing target leakage
-A model can appear exceptionally accurate when its predictors already contain the answer. In this dataset, inpatient, outpatient, pharmacy, and emergency costs reconstruct the annual cost target.
 
-Those billing components are excluded from prediction, together with insurance payments, patient responsibility, outstanding balances, and target-derived risk labels.
+The dataset is generated from predefined relationships and random variation. It does not contain real patient records or establish how the models would perform in a clinical population.
 
-The model uses an explicit 16-feature allowlist. Inputs are assumed to be available at the start of the forecast period. The synthetic source does not contain observation timestamps that independently verify that assumption.
+## Machine Learning Approach
 
-previous_year_cost is also excluded because the generator creates it from the same random base as current-year costs.
+### An Explicit Feature Contract
 
-The complete reasoning is documented in the [Feature Audit](reports/FEATURE_AUDIT.md).
-Training and evaluation
-The dataset is split into three disjoint patient groups:
-Split	Patients	Role
-Training	6,000	Fit preprocessing and model parameters
-Validation	2,000	Compare candidates, calculate ensemble weights, and select a model
-Test	2,000	Measure held-out performance after selection
+Training and inference use the same **16 allowlisted inputs**:
 
+| Category | Inputs |
+|---|---|
+| Demographics | Age, gender, state |
+| Patient characteristics | BMI, smoking status, chronic condition count |
+| Prior utilization | Hospitalizations, emergency visits, office visits |
+| Medication and prevention | Medication count, vaccination status |
+| Measurements | Systolic and diastolic blood pressure, total cholesterol, fasting glucose |
+| Coverage | Insurance type |
 
-Numeric imputation, scaling, and categorical encoding are fitted on training rows only. Test outcomes do not influence model fitting, ensemble weights, or selection.
+These inputs are assumed to be known before the forecast year. The synthetic dataset does not contain observation timestamps that independently verify this assumption.
 
-Supported candidates include a mean baseline, Linear Regression, Ridge Regression, Random Forest, Gradient Boosting, XGBoost, LightGBM, and a validation-weighted ensemble.
-Measured Results
-The validation-selected ensemble achieved the following results on 2,000 held-out synthetic patients:
-Model	MAE	RMSE	R²
-Mean baseline	$4,246.86	$5,205.25	−0.0001
-Linear Regression	$2,128.67	$2,804.21	0.7098
-Ridge Regression	$2,128.71	$2,804.05	0.7098
-Random Forest	$1,501.60	$2,049.27	0.8450
-Gradient Boosting	$1,457.91	$1,967.33	0.8571
-XGBoost	$1,452.36	$1,962.90	0.8578
-LightGBM	$1,449.63	$1,963.43	0.8577
-Validation ensemble	$1,447.35	$1,956.80	0.8587
+### Preventing Target Leakage
 
+Some billing fields already contain information about the outcome being predicted. Including them would produce misleadingly strong results.
 
-MAE and RMSE measure prediction error in dollars. R² describes explained variation; it is not classification accuracy.
+The prediction pipeline excludes:
 
-These results measure performance within the synthetic dataset. They do not establish prospective accuracy or generalization to real healthcare data.
+- Same-year inpatient, outpatient, pharmacy, and emergency costs
+- Insurance payments and patient responsibility
+- Outstanding balances and payment status
+- Target-derived risk labels and financial scores
+- Identifiers and unvalidated diagnostic text
+- Previous-year cost, which shares the current-year random base in the generator
 
-Full metrics, ensemble weights, software versions, and the dataset fingerprint are recorded in [Evaluation Results](reports/evaluation.json).
-Consistent Predictions Across Interfaces
-The dashboard and API share one prediction implementation:
-Patient profile
-      │
-      ▼
-Shared input validation
-      │
-      ▼
-Saved preprocessing pipeline
-      │
-      ▼
-Trained prediction model
-      │
-      ▼
-Annual cost estimate and illustrative cost band
-      │
-      ├── Streamlit dashboard
-      ├── FastAPI service
-      └── What-if comparison
-Identical inputs produce identical predictions from the same loaded artifact. Missing or incompatible artifacts produce explicit errors.
+The four billed cost components reconstruct the annual target within rounding error. Their exclusion is essential to evaluating forecasting rather than reconstructing an observed bill.
 
-Predictions include the model identity and dataset fingerprint. The application does not fabricate confidence intervals, bill allocations, clinical recommendations, or financial savings.
-Financial Cost Bands
-Predicted annual spending is grouped into illustrative bands:
-Band	Estimated annual cost
-Low	Below $5,000
-Medium	$5,000 to below $25,000
-High	$25,000 to below $100,000
-Catastrophic	$100,000 or more
+The complete column-by-column assessment is documented in the [Feature Audit](reports/FEATURE_AUDIT.md).
 
+### Training and Evaluation
 
-These are financial thresholds, not validated clinical risk classifications.
+The dataset is divided into three disjoint patient groups:
 
-What-if comparisons describe model sensitivity. A difference between two estimates does not establish a treatment effect or achievable savings.
-Technology Stack
-Layer	Technologies
-Data processing	Python, pandas, NumPy
-Machine learning	scikit-learn, XGBoost, LightGBM
-Dashboard	Streamlit, Plotly
-Prediction API	FastAPI, Pydantic, Uvicorn
-Validation	pytest, coverage, Black, Ruff
-Containers and automation	Docker, Docker Compose, GitHub Actions
+| Dataset split | Patients | Purpose |
+|---|---:|---|
+| Training | 6,000 | Fit preprocessing and model parameters |
+| Validation | 2,000 | Compare candidates, calculate ensemble weights, and select a model |
+| Test | 2,000 | Measure held-out performance after selection |
 
+Numeric imputation, scaling, and categorical encoding are fitted on training rows only.
 
-Quality and Validation
-Local validation completed with 47 passing tests and 89% source coverage.
+Model selection uses validation RMSE. Test outcomes do not influence preprocessing, model fitting, ensemble weights, or selection. No target-based outlier removal is applied.
 
-Regression checks cover:
+## Measured Model Performance
+
+Results below were measured on **2,000 held-out synthetic patients**.
+
+| Model | MAE | RMSE | R² |
+|---|---:|---:|---:|
+| Mean baseline | $4,246.86 | $5,205.25 | −0.0001 |
+| Linear Regression | $2,128.67 | $2,804.21 | 0.7098 |
+| Ridge Regression | $2,128.71 | $2,804.05 | 0.7098 |
+| Random Forest | $1,501.60 | $2,049.27 | 0.8450 |
+| Gradient Boosting | $1,457.91 | $1,967.33 | 0.8571 |
+| XGBoost | $1,452.36 | $1,962.90 | 0.8578 |
+| LightGBM | $1,449.63 | $1,963.43 | 0.8577 |
+| **Validation ensemble** | **$1,447.35** | **$1,956.80** | **0.8587** |
+
+The **validation-weighted ensemble** was selected using validation performance.
+
+- **MAE** measures the average absolute prediction error in dollars.
+- **RMSE** gives greater weight to larger prediction errors.
+- **R²** describes explained variation; it is not classification accuracy.
+
+These results measure performance within the synthetic dataset. They do not establish prospective accuracy or generalization to real healthcare populations.
+
+Full-precision metrics, ensemble weights, software versions, and the dataset fingerprint are recorded in [Evaluation Results](reports/evaluation.json).
+
+## Shared Prediction Architecture
+
+```text
+Synthetic patient dataset
+           |
+           v
+Explicit feature contract
+           |
+           v
+Disjoint training / validation / test splits
+           |
+           v
+Training-fitted preprocessing and candidate models
+           |
+           v
+Validation-based selection
+           |
+           v
+Saved pipeline and evaluation metadata
+           |
+           v
+Shared input validation and prediction service
+           |
+           +-------------------+-------------------+
+           |                   |                   |
+           v                   v                   v
+     Streamlit app        FastAPI service    What-if comparison
+```
+
+The fitted preprocessing pipeline remains attached to the model during inference.
+
+Identical inputs produce identical predictions from the same loaded artifact. Missing or incompatible artifacts produce explicit errors rather than replacement estimates.
+
+Prediction outputs include the model identity and dataset fingerprint. The application does not fabricate confidence intervals, billing allocations, clinical recommendations, or financial savings.
+
+## Financial Cost Bands
+
+Predicted annual costs are grouped into illustrative financial bands:
+
+| Band | Estimated annual cost |
+|---|---:|
+| Low | Below $5,000 |
+| Medium | $5,000 to below $25,000 |
+| High | $25,000 to below $100,000 |
+| Catastrophic | $100,000 or more |
+
+These thresholds describe estimated spending, not validated clinical risk.
+
+Population predictions include training records. Held-out model performance is reported separately on the Model Performance page.
+
+## What-If Analysis
+
+The scenario workspace compares two estimates generated by the same fitted pipeline.
+
+For example, a user can compare an original profile with an alternative BMI or smoking status while keeping the other entered characteristics unchanged.
+
+The resulting difference describes **model sensitivity**. It does not establish:
+
+- A causal treatment effect
+- Achievable financial savings
+- A recommended intervention
+- A clinically realistic change in patient circumstances
+
+## Technology Stack
+
+| Layer | Technologies |
+|---|---|
+| Data processing | Python, pandas, NumPy |
+| Machine learning | scikit-learn, XGBoost, LightGBM |
+| Interactive analytics | Streamlit, Plotly |
+| Prediction service | FastAPI, Pydantic, Uvicorn |
+| Testing and code quality | pytest, coverage, Black, Ruff |
+| Containers | Docker, Docker Compose |
+| Automation | GitHub Actions |
+
+## Testing and Validation
+
+Cloud-environment validation completed with **47 passing tests** and **89% source coverage**.
+
+Regression tests cover:
+
 - Exclusion of target-derived predictors
-- Training-only preprocessing and disjoint patient splits
+- Training-only preprocessing
+- Disjoint patient splits
 - Independence from held-out test outcomes
 - Finite ensemble weights, including zero-error cases
-- Deterministic and consistent inference
-- API validation and unavailable-artifact handling
+- Deterministic repeated predictions
+- Consistency across individual, population, and API inference
+- Invalid input and unavailable-artifact handling
 - All six dashboard pages and prediction forms
-Formatting, lint, Docker build, and local container smoke checks also passed. Hosted GitHub Actions status is separate from these local results.
+
+Local formatting, lint, Docker build, and container smoke checks also passed.
+
+Hosted GitHub Actions and Windows validation are separate from these cloud results. A numerical-tolerance update was added after a Windows regression-test failure; Windows confirmation remains pending.
 
 Detailed evidence is available in the [Execution Report](EXECUTION_REPORT.md).
-Project Structure
+
+## Repository Structure
+
+```text
 healthcare_cost_prediction/
 ├── dashboards/          Streamlit analytics application
-├── data/raw/            Committed synthetic patient sample
+├── data/
+│   └── raw/             Committed synthetic patient sample
 ├── docs/                Technical documentation
 ├── notebooks/           Exploratory analysis
 ├── reports/             Feature audit, metrics, and validation evidence
@@ -142,10 +240,34 @@ healthcare_cost_prediction/
 │   ├── data/            Feature contract and dataset splitting
 │   └── models/          Training and shared inference
 ├── tests/               Modeling, API, and dashboard regressions
-└── .github/workflows/   Automated validation definition
-Limitations
-The application has not undergone clinical, prospective, or external validation. Its random patient split does not assess performance across future time periods or different healthcare systems.
+└── .github/
+    └── workflows/       Automated validation definition
+```
 
-The synthetic generator defines the relationships the models learn. Fairness, calibrated uncertainty, privacy controls for real patient data, and public-service security have not been established.
+## Limitations
 
-Population analytics include training records; held-out performance should be assessed through the evaluation report.
+This application has not undergone clinical, prospective, or external validation.
+
+The synthetic generator defines the relationships the models learn. A random patient split does not assess performance across future time periods or different healthcare systems.
+
+The project does not establish:
+
+- Fairness across real patient populations
+- Calibrated prediction uncertainty
+- Clinical safety or effectiveness
+- Causal intervention benefits
+- Production security or operational reliability
+- Financial impact or deployment success
+
+Real-world use would require verified prediction-time data, temporal and external evaluation, subgroup analysis, privacy controls, security review, and appropriate clinical governance.
+
+## Project Documentation
+
+- [Feature Audit](reports/FEATURE_AUDIT.md)
+- [Evaluation Results](reports/evaluation.json)
+- [Execution Report](EXECUTION_REPORT.md)
+- [Technical Documentation](docs/DOCUMENTATION.md)
+
+## License
+
+Distributed under the [MIT License](LICENSE).
