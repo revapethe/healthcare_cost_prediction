@@ -21,16 +21,16 @@ PAGES = [
     "Model Performance",
     "What-If Scenarios",
 ]
-COLORS = ["#007F82", "#173A60", "#3BA9B2", "#E2A34B"]
+COLORS = ["#AD2538", "#672333", "#CB6B50", "#A47735", "#80535A", "#D49A72"]
 st.set_page_config(
     page_title="Healthcare Cost & Risk Analytics", page_icon="⚕", layout="wide"
 )
 st.markdown(
     """<style>
 .block-container {max-width: 1450px; padding-top: 2rem;}
-h1,h2,h3 {letter-spacing: -.025em; color: #142D4E;}
-[data-testid="stMetric"] {background: white; border: 1px solid #DFE8F0; border-radius: 12px; padding: 1rem;}
-[data-testid="stSidebar"] {border-right: 1px solid #DFE8F0;}
+h1,h2,h3 {letter-spacing: -.025em; color: #3B2427;}
+[data-testid="stMetric"] {background: #FFFCF5; border: 1px solid #EADAC8; border-radius: 12px; padding: 1rem;}
+[data-testid="stSidebar"] {border-right: 1px solid #EADAC8;}
 .stButton>button {border-radius: 8px;}
 @media(max-width: 700px) {.block-container {padding: 1rem;}}
 </style>""",
@@ -41,11 +41,15 @@ h1,h2,h3 {letter-spacing: -.025em; color: #142D4E;}
 def chart(fig):
     fig.update_layout(
         template="plotly_white",
-        font_color="#142D4E",
+        font_color="#3B2427",
         paper_bgcolor="rgba(0,0,0,0)",
+        plot_bgcolor="#FFFCF5",
+        colorway=COLORS,
         margin=dict(l=10, r=10, t=35, b=15),
         legend_title_text="",
     )
+    fig.update_xaxes(gridcolor="#EADAC8", zerolinecolor="#EADAC8")
+    fig.update_yaxes(gridcolor="#EADAC8", zerolinecolor="#EADAC8")
     st.plotly_chart(fig, width="stretch")
 
 
