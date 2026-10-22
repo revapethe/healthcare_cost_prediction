@@ -1,0 +1,38 @@
+...............................................                          [100%]
+=============================== warnings summary ===============================
+../healthcare-env/lib/python3.12/site-packages/fastapi/testclient.py:1
+  /workspace/healthcare-env/lib/python3.12/site-packages/fastapi/testclient.py:1: StarletteDeprecationWarning: Using `httpx` with `starlette.testclient` is deprecated; install `httpx2` instead.
+    from starlette.testclient import TestClient as TestClient  # noqa
+
+-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html
+================================ tests coverage ================================
+_______________ coverage: platform linux, python 3.12.14-final-0 _______________
+
+Name                    Stmts   Miss  Cover   Missing
+-----------------------------------------------------
+src/api/app.py             51      4    92%   41, 53, 60-61
+src/data/pipeline.py       57     10    82%   88, 97, 99, 133-138, 142
+src/models/predict.py      69      2    97%   105, 125
+src/models/train.py        68     12    82%   34, 73-76, 189-197, 201
+-----------------------------------------------------
+TOTAL                     245     28    89%
+47 passed, 1 warning in 16.60s
+
+Additional executed functional checks:
+PASS: 2000 held-out predictions and API/shared inference parity
+PASS: live API /health HTTP 200 and /api/v1/predict HTTP 200; annual prediction 13599.18
+PASS: live Streamlit /_stcore/health HTTP 200
+PASS: black --check src dashboards scripts tests (11 files unchanged)
+PASS: ruff check src dashboards scripts tests
+PASS: git diff --check
+PASS: docker compose config --quiet
+PASS: Docker build, trusted CA forwarded via ephemeral secret, verification enabled
+PASS: Docker API readiness and real inference parity: 13599.18
+PASS: Docker dashboard readiness
+PASS: Docker dashboard Executive Overview
+PASS: Docker dashboard Patient Cost Predictor
+PASS: Docker dashboard Risk Stratification
+PASS: Docker dashboard Cost Analysis
+PASS: Docker dashboard Model Performance
+PASS: Docker dashboard What-If Scenarios
+NOT RUN: hosted GitHub Actions, merge, registry publication, deployment

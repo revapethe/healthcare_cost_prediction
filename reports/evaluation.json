@@ -1,0 +1,144 @@
+{
+  "schema_version": 1,
+  "created_at": "2026-10-22T19:15:54.212796+00:00",
+  "dataset_sha256": "d1acf0cb98bd7955eca81abf8709142689849992c1754fd758ee699159158372",
+  "synthetic": true,
+  "rows": 10000,
+  "split_seed": 42,
+  "cleaning": {
+    "invalid_pressure_pairs_imputed": 87,
+    "rule": "Inconsistent BP pairs set to missing; numeric imputation fitted on train only. Literal vaccination category None preserved."
+  },
+  "split_sizes": {
+    "train": 6000,
+    "validation": 2000,
+    "test": 2000
+  },
+  "features": [
+    "age",
+    "bmi",
+    "smoker",
+    "chronic_conditions_count",
+    "previous_hospitalizations",
+    "previous_er_visits",
+    "previous_office_visits",
+    "medication_count",
+    "blood_pressure_systolic",
+    "blood_pressure_diastolic",
+    "cholesterol_total",
+    "glucose_fasting",
+    "gender",
+    "state",
+    "insurance_type",
+    "vaccination_status"
+  ],
+  "selected_model": "Validation ensemble",
+  "selection_rule": "Minimum validation RMSE, including baseline; no test-based tuning or refit",
+  "validation": {
+    "Mean baseline": {
+      "MAE": 4182.324306813333,
+      "RMSE": 5108.465118714698,
+      "R2": -0.00014824228045640098
+    },
+    "Linear Regression": {
+      "MAE": 1981.7829406486867,
+      "RMSE": 2622.3384681061207,
+      "R2": 0.7364512242823166
+    },
+    "Ridge Regression": {
+      "MAE": 1981.6710913193497,
+      "RMSE": 2622.04922739266,
+      "R2": 0.7365093592888099
+    },
+    "Random Forest": {
+      "MAE": 1450.8528564662427,
+      "RMSE": 1953.3226956689928,
+      "R2": 0.8537716755258324
+    },
+    "Gradient Boosting": {
+      "MAE": 1424.7177879673857,
+      "RMSE": 1890.8528325100515,
+      "R2": 0.8629752657839327
+    },
+    "XGBoost": {
+      "MAE": 1420.1638341918947,
+      "RMSE": 1888.4339728901268,
+      "R2": 0.8633256173210127
+    },
+    "LightGBM": {
+      "MAE": 1424.01427176571,
+      "RMSE": 1895.9352091387043,
+      "R2": 0.8622376650271597
+    },
+    "Validation ensemble": {
+      "MAE": 1417.4377549596657,
+      "RMSE": 1884.4134897140987,
+      "R2": 0.8639069583934189
+    }
+  },
+  "test": {
+    "Mean baseline": {
+      "MAE": 4246.855562689999,
+      "RMSE": 5205.250873940707,
+      "R2": -5.624805388038112e-05
+    },
+    "Linear Regression": {
+      "MAE": 2128.673915257871,
+      "RMSE": 2804.2066204439316,
+      "R2": 0.7097574261869716
+    },
+    "Ridge Regression": {
+      "MAE": 2128.713354273731,
+      "RMSE": 2804.0468654345655,
+      "R2": 0.7097904953509777
+    },
+    "Random Forest": {
+      "MAE": 1501.6002110809065,
+      "RMSE": 2049.2697396785475,
+      "R2": 0.8449972689197977
+    },
+    "Gradient Boosting": {
+      "MAE": 1457.9128279075226,
+      "RMSE": 1967.333707480874,
+      "R2": 0.8571444353492346
+    },
+    "XGBoost": {
+      "MAE": 1452.3590135766601,
+      "RMSE": 1962.8980984333284,
+      "R2": 0.8577878819673364
+    },
+    "LightGBM": {
+      "MAE": 1449.6323852063551,
+      "RMSE": 1963.4270911615868,
+      "R2": 0.857711220511154
+    },
+    "Validation ensemble": {
+      "MAE": 1447.3534156931375,
+      "RMSE": 1956.8022833301982,
+      "R2": 0.8586697949844461
+    }
+  },
+  "ensemble": {
+    "members": [
+      "XGBoost",
+      "Gradient Boosting",
+      "LightGBM"
+    ],
+    "weights": [
+      0.3339160977429051,
+      0.33348893802355195,
+      0.332594964233543
+    ]
+  },
+  "versions": {
+    "python": "3.12.14",
+    "sklearn": "1.9.1",
+    "numpy": "2.5.4"
+  },
+  "limitations": [
+    "Synthetic data only; no clinical validation",
+    "Random patient split, not temporal or external validation",
+    "Historical inputs assumed known before forecast; source contains no observation timestamps",
+    "No calibrated uncertainty or causal intervention estimates"
+  ]
+}

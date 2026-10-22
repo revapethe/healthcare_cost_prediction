@@ -99,3 +99,8 @@ secrets/
 *.pem
 *.key
 credentials.json
+
+# Reproducible fitted pipelines and split outputs (regenerate locally)
+artifacts/
+.venv/
+.ruff_cache/
