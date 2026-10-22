@@ -287,10 +287,25 @@ def test_test_targets_cannot_change_model_selection_or_fit(
     )
     second_model = CostPredictor(second_path / "model.joblib")
     assert first["selected_model"] == second["selected_model"]
-    assert first["validation"] == second["validation"]
-    assert first["ensemble"] == second["ensemble"]
+    # Parallel reductions can differ by a few floating-point bits across fits.
+    # Keep model/member selection exact and numerical comparisons tight enough
+    # to detect any material influence from the poisoned held-out outcomes.
+    assert first["validation"].keys() == second["validation"].keys()
+    for name, metrics in first["validation"].items():
+        assert metrics == pytest.approx(
+            second["validation"][name], rel=1e-10, abs=1e-10
+        )
+    assert first["ensemble"]["members"] == second["ensemble"]["members"]
+    np.testing.assert_allclose(
+        first["ensemble"]["weights"],
+        second["ensemble"]["weights"],
+        rtol=1e-10,
+        atol=1e-12,
+    )
     np.testing.assert_allclose(
         first_model.model.predict(splits["test"][FEATURES]),
         second_model.model.predict(splits["test"][FEATURES]),
+        rtol=1e-10,
+        atol=1e-7,
     )
     assert first["test"] != second["test"]
