@@ -344,7 +344,14 @@ def test_cloud_bundle_manifest_matches_dataset_and_evaluation():
 
     path = ROOT / "deployment/model.joblib"
     manifest = json.loads((ROOT / "deployment/manifest.json").read_text())
-    report = json.loads((ROOT / "reports/evaluation.json").read_text())
+    report = json.loads((ROOT / "deployment/evaluation.json").read_text())
     assert hashlib.sha256(path.read_bytes()).hexdigest() == manifest["sha256"]
     assert CostPredictor(path).metadata == report
     assert manifest["dataset_sha256"] == report["dataset_sha256"]
+    assert manifest["versions"] == report["versions"]
+    assert manifest["selected_model"] == report["selected_model"]
+    assert manifest["test_metrics"] == report["test"][report["selected_model"]]
+    assert (
+        report["dataset_sha256"]
+        == hashlib.sha256((ROOT / "data/raw/patient_data.csv").read_bytes()).hexdigest()
+    )

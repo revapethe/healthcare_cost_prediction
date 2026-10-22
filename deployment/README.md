@@ -1,6 +1,6 @@
 # Streamlit demonstration model
 
-`model.joblib` is a trusted, repository-supplied fitted pipeline for the committed synthetic patient dataset. It contains the same model and evaluation metadata as the measured run in `reports/evaluation.json`. It is included so Streamlit Community Cloud can serve predictions without executing training during app startup.
+`model.joblib` is a trusted, repository-supplied fitted pipeline for the committed synthetic patient dataset. It contains the same model and evaluation metadata as the preserved measured run in `deployment/evaluation.json`. It is included so Streamlit Community Cloud can serve predictions without executing training during app startup.
 
 Artifact generation used Python 3.12 and the pinned runtime dependencies. Configure the hosted app for Python 3.12. `packages.txt` supplies the OpenMP library used by the supported boosters. Do not replace pinned dependencies without rebuilding and validating the artifact.
 
@@ -11,3 +11,5 @@ For an intentional dataset/model update, retrain with `python -m src.models.trai
 The artifact is approximately 1 MB and contains a model trained only on synthetic data. It is an educational demonstration, not a validated clinical model. Publishing this branch or changing an existing app's deployed branch is a separate user-controlled action.
 
 Validation for this deployment fix: 49 tests passed with one upstream test-client deprecation warning. The prediction-dependent Streamlit pages also passed AppTest using this bundled artifact explicitly. A regression test simulates a fresh checkout with no local training outputs and verifies API readiness/inference through the fallback. Hosted deployment remains user-controlled and has not been verified by these local checks.
+
+`deployment/evaluation.json` preserves the provenance of this exact bundled model. Fresh training writes `reports/evaluation.json`, which can legitimately differ in timestamps, runtime versions and measured results. Tests compare the bundled artifact with its own report and manifest, not with a later training run. When replacing the bundle, copy its metadata into `deployment/evaluation.json` and update the manifest together.
