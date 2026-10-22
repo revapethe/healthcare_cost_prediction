@@ -1,0 +1,16 @@
+{
+  "artifact": "model.joblib",
+  "sha256": "b3e0fbec2520f2e4b1a317966a538309948ca4943518860ea8d386e61bfbea8c",
+  "dataset_sha256": "d1acf0cb98bd7955eca81abf8709142689849992c1754fd758ee699159158372",
+  "selected_model": "Validation ensemble",
+  "versions": {
+    "python": "3.12.14",
+    "sklearn": "1.9.1",
+    "numpy": "2.5.4"
+  },
+  "test_metrics": {
+    "MAE": 1447.3534156931375,
+    "RMSE": 1956.8022833301982,
+    "R2": 0.8586697949844461
+  }
+}
